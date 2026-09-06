@@ -1,3 +1,5 @@
 Backend/
 __pycache__/
 .vscode/
+cert.json
+session.json

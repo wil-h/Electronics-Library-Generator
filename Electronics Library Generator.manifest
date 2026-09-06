@@ -1,12 +1,12 @@
 {
 	"autodeskProduct":	"Fusion",
 	"type":	"addin",
-	"author":	"Wil Harrick",
+	"author":	"Wilson Harrick",
 	"description":	{
 		"":	""
 	},
 	"version":	"",
-	"runOnStartup":	false,
+	"runOnStartup":	true,
 	"supportedOS":	"windows|mac",
 	"editEnabled":	true,
 	"iconFilename":	"AddInIcon.svg"

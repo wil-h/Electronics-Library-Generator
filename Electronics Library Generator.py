@@ -2,7 +2,14 @@ import adsk.core
 import traceback
 import os
 import sys
-import time
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_LIB_DIR = os.path.join(_THIS_DIR, 'lib')
+for p in (_THIS_DIR, _LIB_DIR):
+    if p not in sys.path:
+        sys.path.append(p)
+
+from AWSServer import MouserClient
 
 # Global variables to keep handlers/objects alive
 _app = None
@@ -15,18 +22,32 @@ CMD_DESCRIPTION = 'Creates an electronics library from an excel file with mouser
 PANEL_ID = 'SolidScriptsAddinsPanel'  
 WORKSPACE_ID = 'FusionSolidEnvironment'
 ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources')
+SESSION_FILE = os.path.join(_THIS_DIR, 'session.json')
 
+def execute():
+    if not os.path.exists(SESSION_FILE):
+        result = _ui.messageBox(
+            'This add-in needs permission to view your autodesk account to prevent abuse of the mouser api. This information is not stored\n\n'
+            'Click OK to open in browser.',
+            'Permissions Required',
+            adsk.core.MessageBoxButtonTypes.OKCancelButtonType,
+            adsk.core.MessageBoxIconTypes.QuestionIconType
+        )
+        if result != adsk.core.DialogResults.DialogOK:
+            return  # user cancelled, don't proceed to login
 
-def verification():
-    
-
+    mouser = MouserClient()
+    mouser.login()
+    partnum = mouser.search_part("595-TLV1701AIDCKRG4")
+    _ui.messageBox(partnum, "Success:")
+#---------------------------fusion integration setup--------------------------------
 class CommandExecuteHandler(adsk.core.CommandEventHandler):
     def __init__(self):
         super().__init__()
 
     def notify(self, args):
         try:
-            verification()
+            execute()
         except:
             if _ui:
                 _ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
