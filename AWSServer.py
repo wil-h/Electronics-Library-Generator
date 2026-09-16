@@ -17,6 +17,27 @@ try:
 except ImportError:
     _IN_FUSION = False
 
+# ---------------- internals: cert persistence ----------------
+
+def _load_cert(self):
+    if os.path.exists(self._cert_file):
+        with open(self._cert_file, "r") as f:
+            cert = json.load(f)
+        # Guard against reusing a cert that's already used up or whose
+        # 24h TTL has passed since the last time this ran.
+        if cert.get("remaining_uses", 0) > 0 and cert.get("expires_at", 0) > time.time():
+            return cert
+    return None
+
+def _save_cert(self):
+    with open(self._cert_file, "w") as f:
+        json.dump(self._cert, f)
+
+def _clear_cert(self):
+    self._cert = None
+    if os.path.exists(self._cert_file):
+        os.remove(self._cert_file)
+
 
 class MouserClient:
     _REDIRECT_PORT = 8734
@@ -34,7 +55,7 @@ class MouserClient:
         # {"cert_id": ..., "remaining_uses": ..., "expires_at": ...}
         # Loaded from disk so it survives across add-in invocations instead
         # of minting a fresh (quota-consuming) cert on every single call.
-        self._cert = self._load_cert()
+        self._cert = _load_cert(self)
 
     # ---------------- public API ----------------
 
@@ -88,7 +109,7 @@ class MouserClient:
 
         if resp.status_code < 300:
             self._cert["remaining_uses"] -= 1
-            self._save_cert()
+            _save_cert(self)
 
         resp.raise_for_status()
         return resp.json()
@@ -112,27 +133,6 @@ class MouserClient:
     def _save_session_token(self, session_token):
         with open(self._session_file, "w") as f:
             json.dump({"session_token": session_token}, f)
-
-    # ---------------- internals: cert persistence ----------------
-
-    def _load_cert(self):
-        if os.path.exists(self._cert_file):
-            with open(self._cert_file, "r") as f:
-                cert = json.load(f)
-            # Guard against reusing a cert that's already used up or whose
-            # 24h TTL has passed since the last time this ran.
-            if cert.get("remaining_uses", 0) > 0 and cert.get("expires_at", 0) > time.time():
-                return cert
-        return None
-
-    def _save_cert(self):
-        with open(self._cert_file, "w") as f:
-            json.dump(self._cert, f)
-
-    def _clear_cert(self):
-        self._cert = None
-        if os.path.exists(self._cert_file):
-            os.remove(self._cert_file)
 
     # ---------------- internals: PKCE + OAuth ----------------
 
@@ -217,5 +217,76 @@ class MouserClient:
             )
         resp.raise_for_status()
         self._cert = resp.json()
-        self._save_cert()
+        _save_cert(self)
         return self._cert
+
+class EmailClient:
+    api_base = "https://4a9iyrcgl5.execute-api.us-east-1.amazonaws.com".rstrip("/")
+    _cert = None
+
+    def __init__(self, cert_file=None):
+        self._cert_file = cert_file or os.path.join(
+            os.path.dirname(__file__), "cert.json"
+        )
+        self._cert = _load_cert(self)
+
+    def get_address(self):
+        resp = requests.get(
+            f"{self.api_base}/email/get-address",
+            headers={"X-Cert-Id": self._cert["cert_id"]},
+            timeout=30,
+        )
+        if resp.status_code == 429:
+            raise PermissionError("there is a maximum of 10 email operations a day")
+        resp.raise_for_status()
+        return resp.json()["email"]
+
+    def get_activation_link(self, email):
+        resp = requests.get(
+            f"{self.api_base}/email/get-mail",
+            headers={"X-Cert-Id": self._cert["cert_id"], "email": email},
+            timeout=30,
+        )
+        if resp.status_code == 429:
+            raise PermissionError("there is a maximum of 10 email operations a day")
+        resp.raise_for_status()
+        messages = resp.json()
+        if not isinstance(messages, list):
+            if messages.get("error") is not None:
+                return False
+            raise ValueError("Request returned unknown format")
+
+        for message in messages:
+            if message.get("mail_text") is not None:
+                return self._extract_link(message.get("mail_text"))
+
+        return False
+
+    def _extract_link(self, message):
+        charlist = []
+        for char in message:
+            charlist.append(char)
+
+        target = "Confirm Account"
+        i = 0
+        for index, char in enumerate(charlist):
+            i = index
+            found = True
+            for index2, correctChar in enumerate(target):
+                if charlist[i] == correctChar:
+                    i+=1
+                else:
+                    found = False
+                    break
+            if found:
+                i+=2
+                break
+        link = ""
+
+        while (charlist[i] != ']'):
+            link+=charlist[i]
+            i+=1
+
+        return link
+
+    
