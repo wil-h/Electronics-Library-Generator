@@ -1,5 +1,5 @@
 this will make an electronics library from avalible files located on mouser.com
-you will need to input an excel file with the components. the only criteria for the file is that it has the header "Mouser #" followed by a column of the item numbers you want in the library
+you will need to input an excel file with the components. the only criteria for the file is that it has the header "Mouser #" the header must be on the first row of data in the file. followed by a column of the item numbers you want in the library
 the mouser api is protected from abuse, you will only be able to handle 900 components every 24 hours
 you will be able to specify the name and location of the library
 google chrome needs to be installed on your computer!!

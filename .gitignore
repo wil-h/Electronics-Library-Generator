@@ -3,3 +3,5 @@ __pycache__/
 .vscode/
 cert.json
 session.json
+login.json
+CAD_FILES/
