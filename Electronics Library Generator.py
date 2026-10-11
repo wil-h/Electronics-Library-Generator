@@ -3,6 +3,8 @@ import traceback
 import os
 import sys
 import asyncio
+import zipfile
+import shutil
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _LIB_DIR = os.path.join(_THIS_DIR, 'lib')
@@ -11,8 +13,10 @@ for p in (_THIS_DIR, _LIB_DIR):
         sys.path.append(p)
 
 from AWSServer import MouserClient
+from LibraryIO import LibraryIO
 from componentSearchEnginev2 import ComponentSearchEngine
 import openpyxl
+import stat
 import nodriver as uc
 
 
@@ -39,8 +43,12 @@ INPUT_PARTNUM = 'partNumberInput'
 MODE_EXCEL = 'From Excel'
 MODE_SINGLE = 'Single Component' 
 
+def _remove_readonly(func,path,exc):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
 async def execute(inputs):
-    '''if not os.path.exists(SESSION_FILE):
+    if not os.path.exists(SESSION_FILE):
         result = _ui.messageBox(
             'This add-in needs permission to view your autodesk account to prevent abuse of the mouser api. This information is not stored\n\n'
             'Click OK to open in browser.',
@@ -92,7 +100,8 @@ async def execute(inputs):
             value = row[0]
             if value is not None:
                 mouserNumbers.append(value.strip())
-
+    if len(mouserNumbers) > 75:
+        raise RuntimeError(f"there is a maximum of 75 components per day, you entered {len(mouserNumbers)} parts")
     #use api and convert to a list of part numbers
     mfrNumbers = []
     for mouser_number in mouserNumbers:
@@ -109,20 +118,65 @@ async def execute(inputs):
     except Exception as e:
         if _ui:
             _ui.messageBox('Failed:\n{}'.format(e))
+            return
     finally:
         await asyncio.sleep(5)
-        await se.close()'''
+        await se.close()
+    #extract lbr files
+    PATH = os.path.join(os.path.dirname(__file__), 'CAD_FILES')
+    files = os.listdir(PATH)
+    #remove leftover non-zip files
+    for file in files:
+        name,ext = file.split('.',1)
+        if ext != 'zip':
+            os.remove(os.path.join(PATH, file))
+            continue
+        extract_path = os.path.join(PATH, name)
+        with zipfile.ZipFile(os.path.join(PATH, file), 'r') as f:
+            f.extractall(extract_path)
+        os.remove(os.path.join(PATH, file))
+    libs = os.path.join(PATH, "libs")
+    threeD = os.path.join(PATH, "3D")
+    os.mkdir(libs)
+    os.mkdir(threeD)
+    files = os.listdir((PATH))
+    for file in files:
+        if file == "libs" or file == "3D":
+            continue
+        folder = os.path.join(PATH, file)
+        lib,number = file.split('_',1)
+        innerfolder = os.path.join(folder, number)
+        eaglefolder = os.path.join(innerfolder, 'EAGLE')
+        threeDfolder = os.path.join(innerfolder, "3D")
+        filepath = os.path.join(eaglefolder, f"{number}.lbr".replace(',','_'))
+        threeDfilepath = os.path.join(threeDfolder, f"{number}.stp")
+        shutil.move(filepath, libs)
+        shutil.move(threeDfilepath, threeD)
+        shutil.rmtree(folder, onexc=_remove_readonly)
     #create components from downloaded files
-    
+    libio = LibraryIO()
+    await libio.start()
+    _ui.messageBox("Complete Autodesk 2FA in the browser window and continue")
+    filelist = os.listdir(os.path.join(_THIS_DIR, "CAD_FILES/libs"))
+    validNumbers = [(n.split("."))[0] for n in filelist]
+    await libio.associate_models(validNumbers)
+    await libio.create_components(validNumbers)
+    await libio.stop()
     #remove all downloads
+    path = os.path.join(_THIS_DIR, "CAD_FILES")
+    shutil.rmtree(path, onexc=_remove_readonly)
     #finish
+    _ui.messageBox(f"Operation Finished, {len(mfrNumbers) - len(noInfoList)} new libraries added to library.io\nNo part information was avaliable for {len(noInfoList)} parts: {noInfoList}")
 # ---------------------------fusion integration setup--------------------------------
 class CommandExecuteHandler(adsk.core.CommandEventHandler):
     def __init__(self):
         super().__init__()
 
     def notify(self, args):
-        try:
+        try:    
+            path = os.path.join(_THIS_DIR, "CAD_FILES")
+            if os.path.isdir(path):
+                shutil.rmtree(path, onexc=_remove_readonly)
             inputs = args.command.commandInputs
             mode_input = inputs.itemById(INPUT_MODE)
             selected_mode = mode_input.selectedItem.name if mode_input.selectedItem else MODE_EXCEL
@@ -135,9 +189,13 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                     _ui.messageBox('Please enter a Mouser part number before continuing.')
                     args.isValidResult = False
                     return
-
-                uc.loop().run_until_complete(execute(inputs))
-
+                
+                try:
+                    uc.loop().run_until_complete(execute(inputs))
+                except Exception as e:
+                    shutil.rmtree(os.path.join(_THIS_DIR, "CAD_FILES"), onexc=_remove_readonly)
+                    _ui.messageBox(f"encountered a runtime error during processing: {e}")
+                    return
             else:
                 path_input = inputs.itemById(INPUT_PATH)
                 file_path = path_input.value.strip() if path_input else ''
@@ -156,6 +214,7 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
         except:
             if _ui:
                 _ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
+                quit()
 
 
 class CommandInputChangedHandler(adsk.core.InputChangedEventHandler):
@@ -268,11 +327,9 @@ def run(context):
             control = panel.controls.addCommand(cmd_def)
             control.isPromoted = True
             control.isPromotedByDefault = True
-
     except:
         if _ui:
             _ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
-
 
 def stop(context):
     try:

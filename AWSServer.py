@@ -8,6 +8,13 @@ import threading
 import time
 import urllib.parse
 import webbrowser
+import sys
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_LIB_DIR = os.path.join(_THIS_DIR, 'lib')
+for p in (_THIS_DIR, _LIB_DIR):
+    if p not in sys.path:
+        sys.path.append(p)
 
 import requests
 
@@ -111,6 +118,8 @@ class MouserClient:
             self._cert["remaining_uses"] -= 1
             _save_cert(self)
 
+        if resp.status_code == 500:
+            return self.call(payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -157,9 +166,6 @@ class MouserClient:
             else:
                 self.send_response(400)
                 self.end_headers()
-
-        def log_message(self, *args):
-            pass
 
     def _run_oauth_flow(self):
         self._CallbackHandler.auth_code = None

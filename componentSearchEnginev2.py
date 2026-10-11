@@ -161,7 +161,7 @@ class ComponentSearchEngine:
             if success_el is None:
                 raise RuntimeError()
         except:
-            raise RuntimeError("Could not create new account")
+            raise RuntimeError("Could not create new account, there is a maximum of 5 new emails per day")
 
         try:
             eclient = EmailClient()
@@ -179,6 +179,19 @@ class ComponentSearchEngine:
         with builtins.open(os.path.join(os.path.dirname(__file__), "login.json"), 'w') as file:
             file.write('{'+f"\"email\": \"{email}\", \"password\": \"{password}\", \"uses\": \"0\", \"date\": \"{datetime.date.today()}\""+'}')
 
+    async def _open_search(self):
+        self.tab = await self.browser.get("https://componentsearchengine.com/search")
+        i=0
+        ok = True
+        while not await self.tab.evaluate('''document.readyState === "complete"'''):
+            i+=0.1
+            await asyncio.sleep(0.1)
+            if i>=30:
+                ok = False
+                break
+        if not ok:
+            raise RuntimeError("search page did not load")
+    
     def _gen_password(self):
         letter_list = list("abcdefghijklmnopqrstuvwxyz")
         char_list = ['!', '$', '&', '%', '^', '#', '*']
@@ -218,11 +231,7 @@ class ComponentSearchEngine:
                 date = datetime.date.fromisoformat(file.get("date",0))
 
         try:
-            if "/search" not in self.tab.url:
-                self.tab = await self.browser.get("https://componentsearchengine.com/search")
-
-            while not await self.tab.evaluate('''!!document.querySelector("input[name='term']")'''):
-                await asyncio.sleep(0.3)
+            await self._open_search()
             await self.tab.evaluate("window.stop()")
 
             await self._setDownloads()
@@ -232,7 +241,7 @@ class ComponentSearchEngine:
             search_btn = await self.tab.select("button.button.primary.is-bigger", timeout=30)
             await search_btn.click()
 
-            while not await self.tab.evaluate('''!!document.querySelector("a[onclick*='Download Click']")''') and not await self.tab.evaluate('''!!document.querySelector("a.is-request-button")'''):
+            while not await self.tab.evaluate('''!!document.querySelector("a[onclick*='Download Click']") || !!document.querySelector("a.is-request-button") || /No results were found for/i.test(document.body.innerText)'''):
                 await asyncio.sleep(0.3)
             await self.tab.evaluate("window.stop()")
 
@@ -246,11 +255,15 @@ class ComponentSearchEngine:
                 await self.tab.evaluate("window.stop()")
                 return False
 
+            time = 0
             while not await self.tab.evaluate('''!!document.querySelector("a.ecad-model-button")'''):
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(1)
+                time+=1
+                if(time>=30):
+                    break
             await self.tab.evaluate("window.stop()")
 
-            ecad_download_btn = await self.tab.select("a.ecad-model-button", timeout=30)
+            ecad_download_btn = await self.tab.select("a.ecad-model-button", timeout=1)
             await ecad_download_btn.click()
 
             await asyncio.sleep(1)
