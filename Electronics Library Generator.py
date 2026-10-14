@@ -48,6 +48,9 @@ def _remove_readonly(func,path,exc):
     func(path)
 
 async def execute(inputs):
+    path = os.path.join(_THIS_DIR, "CAD_FILES")
+    if os.path.isdir(path):
+        shutil.rmtree(path, onexc=_remove_readonly)
     if not os.path.exists(SESSION_FILE):
         result = _ui.messageBox(
             'This add-in needs permission to view your autodesk account to prevent abuse of the mouser api. This information is not stored\n\n'
@@ -156,11 +159,10 @@ async def execute(inputs):
     #create components from downloaded files
     libio = LibraryIO()
     await libio.start()
-    _ui.messageBox("Complete Autodesk 2FA in the browser window and continue")
+    _ui.messageBox("Complete Autodesk 2FA in the browser window and click OK")
     filelist = os.listdir(os.path.join(_THIS_DIR, "CAD_FILES/libs"))
     validNumbers = [(n.split("."))[0] for n in filelist]
-    await libio.associate_models(validNumbers)
-    await libio.create_components(validNumbers)
+    await libio.process_parts(validNumbers)
     await libio.stop()
     #remove all downloads
     path = os.path.join(_THIS_DIR, "CAD_FILES")
@@ -174,9 +176,6 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
 
     def notify(self, args):
         try:    
-            path = os.path.join(_THIS_DIR, "CAD_FILES")
-            if os.path.isdir(path):
-                shutil.rmtree(path, onexc=_remove_readonly)
             inputs = args.command.commandInputs
             mode_input = inputs.itemById(INPUT_MODE)
             selected_mode = mode_input.selectedItem.name if mode_input.selectedItem else MODE_EXCEL
