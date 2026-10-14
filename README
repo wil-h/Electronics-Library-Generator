@@ -1,6 +1,5 @@
 this will make an electronics library from avalible files located on mouser.com
 you will need to input an excel file with the components. the only criteria for the file is that it has the header "Mouser #" the header must be on the first row of data in the file. followed by a column of the item numbers you want in the library
-the mouser api is protected from abuse, you will only be able to handle 900 components every 24 hours
 each component will be added to a seperate new library on library.io
 you will need to go into the libraryio.py file and enter your autodesk username and password, these items are only stored locally on your computer to power the automation
 there is a maximum of 75 parts/day
@@ -8,5 +7,7 @@ google chrome needs to be installed on your computer!!
 you will need to install the relevant python libraries. look this up if you do not know how to do this
 you will need to be connected to the internet whenever using this addin
 only tested on a windows 11 machine.
+
+IMPORTANT: You will likely need to do some messing around with the code parameters to get this extension to work, but it makes the whole process a lot easier if you can. some of the links point directly to my hubs and such, so you may need to replace them. I made this as a personal project, not for distrobution, but figured I'd share it if anyone wants to play around with it
 
 to install the extension, go into the fusion addin settings, click "Script or Add-In from device" and select "Electronics Library Generator.py"

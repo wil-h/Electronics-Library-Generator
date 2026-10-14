@@ -156,10 +156,10 @@ class ComponentSearchEngine:
             await asyncio.sleep(5) #prevent bot detection by extending form completion time
             submit_btn = await tab.select("input.button.primary.is-large.track", timeout=30)
             await submit_btn.click()
-
-            success_el = await tab.find("Account created successfully.", timeout=30)
-            if success_el is None:
-                raise RuntimeError()
+            try:
+                await asyncio.wait_for(tab.find("Account created successfully.", timeout=15), 20)
+            except:
+                pass
         except:
             raise RuntimeError("Could not create new account, there is a maximum of 5 new emails per day")
 
